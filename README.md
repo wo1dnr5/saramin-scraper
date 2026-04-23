@@ -152,6 +152,75 @@ docker compose run --rm -e KEYWORDS=백엔드개발자,프론트엔드개발자 
 
 ---
 
+## Anti-Bot 대응 이력
+
+사람인은 비정상적인 자동 요청을 탐지하는 anti-bot 시스템을 운영합니다. 개발 과정에서 다음과 같은 문제를 겪었고 단계적으로 해결했습니다.
+
+### 문제 1 — Playwright headless 브라우저 차단
+
+초기에는 Playwright + playwright-stealth로 상세 페이지를 수집했으나, 사람인이 headless 브라우저를 탐지해 전체 요청을 차단했습니다.
+
+```
+playwright._impl._errors.Error: Page.goto: net::ERR_EMPTY_RESPONSE
+```
+
+**원인**: Headless Chromium의 브라우저 시그니처(navigator.webdriver 등)를 서버가 감지  
+**해결**: Playwright를 완전히 제거하고 `curl_cffi` 기반 requests로 교체
+
+---
+
+### 문제 2 — Docker 컨테이너 IP 차단
+
+`curl_cffi`로 교체 후에도 Docker 환경에서는 수집이 불안정했습니다.
+
+```
+curl: (56) Recv failure: Connection reset by peer
+curl: (28) Operation timed out
+```
+
+**원인**: Docker 컨테이너는 호스트(로컬 PC)와 다른 네트워크 인터페이스를 사용합니다. 사람인 입장에서 "비정상적인 IP + 반복 요청 = 봇"으로 판단해 IP 레벨에서 차단했습니다.  
+**해결**: Docker 실행을 포기하고 **로컬 환경에서 직접 실행**으로 전환
+
+---
+
+### 문제 3 — TLS Fingerprinting 탐지
+
+로컬에서 기존 `requests` 라이브러리를 사용하면 TLS 핸드셰이크 패턴이 실제 브라우저와 달라 차단됐습니다.
+
+```
+ConnectionResetError(54, 'Connection reset by peer')
+```
+
+**원인**: Python `requests`의 TLS fingerprint가 실제 Chrome과 달라 봇으로 식별  
+**해결**: `curl_cffi` 라이브러리의 `impersonate="chrome120"` 옵션으로 실제 Chrome의 TLS fingerprint를 흉내
+
+```python
+session = requests.Session(impersonate="chrome120")
+```
+
+---
+
+### 문제 4 — Rate Limiting (속도 제한)
+
+같은 IP에서 짧은 간격으로 반복 요청하면 일시적으로 차단됩니다.
+
+```
+curl: (28) Operation timed out after 20002 milliseconds
+```
+
+**원인**: 페이지 요청 빈도가 높으면 사람인 서버가 일정 시간 해당 IP의 연결을 거부  
+**해결**: 요청 간 딜레이를 50~70초로 설정하고, 실패 시 동일 간격으로 최대 3회 재시도
+
+```python
+LIST_DELAY   = (50, 70)   # 리스트 페이지 간 딜레이
+DETAIL_DELAY = (50, 70)   # 상세 페이지 간 딜레이
+LIST_RETRY   = 3          # 실패 시 재시도 횟수
+```
+
+> **결론**: 안정적인 수집을 위해 로컬 환경 + curl_cffi Chrome 흉내 + 충분한 딜레이 조합이 필수입니다. Docker 환경은 IP 차단 문제로 권장하지 않습니다.
+
+---
+
 ## 기술 스택
 
 | 구분 | 라이브러리 | 역할 |
