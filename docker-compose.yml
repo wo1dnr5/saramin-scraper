@@ -1,0 +1,31 @@
+services:
+
+  # 기본 스크래퍼 (scrape_saramin.py)
+  scraper:
+    build: .
+    container_name: saramin-scraper
+    volumes:
+      - ./output:/app/output   # 결과 CSV를 로컬로 꺼내기
+    environment:
+      - KEYWORDS=솔루션엔지니어,데이터분석가,시스템엔지니어
+      - MAX_PAGES=5
+    command: python scrape_saramin.py
+
+  # 회계/세무 특화 스크래퍼
+  scraper-accounting:
+    build: .
+    container_name: saramin-accounting
+    volumes:
+      - ./output:/app/output
+    command: python scrape_saramin_accounting.py
+
+  # 이력서 분석 (Claude API 필요)
+  resume-advisor:
+    build: .
+    container_name: saramin-resume-advisor
+    volumes:
+      - ./output:/app/output
+      - ./resume:/app/resume   # 이력서 파일 마운트 경로
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}   # .env 파일에서 주입
+    command: python resume_job_advisor.py --resume /app/resume/이력서.pdf

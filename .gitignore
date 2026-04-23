@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.csv
+*.xlsx
+*.xls
+*.json
+.DS_Store
+output/
+resume/
+.env
