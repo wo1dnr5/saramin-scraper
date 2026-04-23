@@ -1,3 +1,5 @@
+resume_job_advisor.py
+scrape_saramin_accounting.py
 venv/
 __pycache__/
 *.pyc
